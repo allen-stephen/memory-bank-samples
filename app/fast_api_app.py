@@ -67,8 +67,7 @@ else:
 
     existing_agents = list(client.agent_engines.list())
     matching_agents = [
-        a for a in existing_agents
-        if a.api_resource.display_name == agent_name
+        a for a in existing_agents if a.api_resource.display_name == agent_name
     ]
 
     if matching_agents:

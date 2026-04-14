@@ -22,12 +22,12 @@ from google.cloud import logging as google_cloud_logging
 from vertexai.agent_engines.templates.adk import AdkApp
 
 from app.agent import app as adk_app
-from app.app_utils.memory_config import memory_bank_config
 from app.app_utils.telemetry import setup_telemetry
 from app.app_utils.typing import Feedback
 
 # Load environment variables from .env file at runtime
 load_dotenv()
+
 
 class AgentEngineApp(AdkApp):
     def set_up(self) -> None:

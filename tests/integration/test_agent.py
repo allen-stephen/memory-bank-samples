@@ -26,9 +26,7 @@ from app.agent import generate_memories_callback, root_agent  # Memory Bank
 def test_agent_has_memory_wired() -> None:
     """Verify that the agent has Memory Bank callback and tools configured."""
     assert root_agent.after_agent_callback == generate_memories_callback
-    has_preload_tool = any(
-        isinstance(t, PreloadMemoryTool) for t in root_agent.tools
-    )
+    has_preload_tool = any(isinstance(t, PreloadMemoryTool) for t in root_agent.tools)
     assert has_preload_tool, "Expected PreloadMemoryTool in agent tools"
 
 

@@ -16,9 +16,17 @@
 
 from vertexai._genai.types import (
     ManagedTopicEnum,
+)
+from vertexai._genai.types import (
     MemoryBankCustomizationConfig as CustomizationConfig,
+)
+from vertexai._genai.types import (
     MemoryBankCustomizationConfigMemoryTopic as MemoryTopic,
+)
+from vertexai._genai.types import (
     MemoryBankCustomizationConfigMemoryTopicManagedMemoryTopic as ManagedMemoryTopic,
+)
+from vertexai._genai.types import (
     ReasoningEngineContextSpecMemoryBankConfig as MemoryBankConfig,
 )
 
