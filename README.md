@@ -146,27 +146,6 @@ memory-bank-sample/
 └── pyproject.toml              # Project dependencies
 ```
 
-## How Memory Bank Works
-
-### Agent-level (shared across both deployment targets)
-
-1. **`PreloadMemoryTool`** retrieves relevant memories at the start of each turn and injects them into the system instruction. The model sees past user preferences and facts as context without needing an explicit tool call.
-2. **`generate_memories_callback`** fires after each agent turn via `after_agent_callback`, calling `callback_context.add_session_to_memory()` to send the session's events to Memory Bank for memory extraction.
-3. **Memory Bank** automatically consolidates new memories with existing ones, avoiding duplicates and resolving contradictions.
-
-### Platform-level (differs by deployment target)
-
-**Agent Engine**: `AdkApp` automatically uses `VertexAiMemoryBankService` when deployed with a `memory_bank_config` in `context_spec`. The deploy script (`app/app_utils/deploy.py`) passes the config via `AgentEngineConfig`.
-
-**Cloud Run**: The FastAPI server (`app/fast_api_app.py`) creates or finds an Agent Engine instance with `memory_bank_config` at startup, then passes the `agentengine://` URI as `memory_service_uri` to `get_fast_api_app()`. This tells ADK to use `VertexAiMemoryBankService` backed by that Agent Engine instance.
-
-### Memory topics
-
-Both entry points configure three managed topics:
-- `USER_PERSONAL_INFO` — names, relationships, hobbies, important dates
-- `USER_PREFERENCES` — likes, dislikes, preferred styles
-- `EXPLICIT_INSTRUCTIONS` — things the user explicitly asks the agent to remember
-
 ## Commands
 
 | Command | Description |

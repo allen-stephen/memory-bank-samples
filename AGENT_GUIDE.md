@@ -166,7 +166,13 @@ root_agent = Agent(
 
 ### 3.2. Memory Bank configuration
 
-Both entry points configure the same three managed topics using the class-based API from `vertexai._genai.types`:
+Both deployment targets share a single `memory_bank_config` defined in `app/app_utils/memory_config.py`. Each entry point imports it rather than defining its own copy:
+
+```python
+from app.app_utils.memory_config import memory_bank_config
+```
+
+The config uses the class-based API from `vertexai._genai.types` to define three managed topics:
 
 ```python
 from vertexai._genai.types import (
@@ -197,11 +203,11 @@ Available managed topics: `USER_PERSONAL_INFO`, `USER_PREFERENCES`, `KEY_CONVERS
 
 ### 3.3. Import path for Memory Bank types
 
-Memory Bank types live at `vertexai._genai.types`, **not** `vertexai.types` (which does not exist as of `google-cloud-aiplatform` v1.145.0). The long class names are aliased on import for readability.
+Memory Bank types live at `vertexai._genai.types`, **not** `vertexai.types` (which does not exist as of `google-cloud-aiplatform` v1.147.0). The long class names are aliased on import for readability.
 
 ### 3.4. Platform-level wiring differs by target
 
-**Agent Engine** (`agent_engine_app.py` + `deploy.py`): The `memory_bank_config` is defined in `agent_engine_app.py` and imported by `deploy.py`, which wraps it in a `ReasoningEngineContextSpec` and passes it via `context_spec` in `AgentEngineConfig`. At runtime, `AdkApp` automatically uses `VertexAiMemoryBankService`.
+**Agent Engine** (`agent_engine_app.py` + `deploy.py`): Both files import `memory_bank_config` from `app/app_utils/memory_config.py`. The deploy script wraps it in a `ReasoningEngineContextSpec` and passes it via `context_spec` in `AgentEngineConfig`. At runtime, `AdkApp` automatically uses `VertexAiMemoryBankService`.
 
 ```python
 from vertexai._genai.types import ReasoningEngineContextSpec
@@ -210,7 +216,7 @@ context_spec = ReasoningEngineContextSpec(memory_bank_config=memory_bank_config)
 config = AgentEngineConfig(..., context_spec=context_spec)
 ```
 
-**Cloud Run** (`fast_api_app.py`): The `memory_bank_config` is defined in `fast_api_app.py` and used when creating the Agent Engine instance at server startup. The resulting `agentengine://` URI is passed as `memory_service_uri` to `get_fast_api_app()`, which tells ADK to use `VertexAiMemoryBankService`.
+**Cloud Run** (`fast_api_app.py`): Imports `memory_bank_config` from `app/app_utils/memory_config.py` and uses it when creating the Agent Engine instance at server startup. The resulting `agentengine://` URI is passed as `memory_service_uri` to `get_fast_api_app()`, which tells ADK to use `VertexAiMemoryBankService`.
 
 ```python
 memory_service_uri = f"agentengine://{agent_engine.api_resource.name}"
@@ -420,16 +426,8 @@ from google.adk.artifacts import GcsArtifactService, InMemoryArtifactService
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
-# Memory Bank (platform-level config)
-from vertexai._genai.types import (
-    AgentEngineConfig,
-    ManagedTopicEnum,
-    MemoryBankCustomizationConfig as CustomizationConfig,
-    MemoryBankCustomizationConfigMemoryTopic as MemoryTopic,
-    MemoryBankCustomizationConfigMemoryTopicManagedMemoryTopic as ManagedMemoryTopic,
-    ReasoningEngineContextSpec,
-    ReasoningEngineContextSpecMemoryBankConfig as MemoryBankConfig,
-)
+# Memory Bank (shared config)
+from app.app_utils.memory_config import memory_bank_config
 ```
 
 ### Cloud Run deployments
@@ -445,17 +443,13 @@ from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
-# Memory Bank (platform-level config) + Agent Engine client
+# Memory Bank (shared config) + Agent Engine client
 import vertexai
 from vertexai._genai.types import (
     AgentEngineConfig,
-    ManagedTopicEnum,
-    MemoryBankCustomizationConfig as CustomizationConfig,
-    MemoryBankCustomizationConfigMemoryTopic as MemoryTopic,
-    MemoryBankCustomizationConfigMemoryTopicManagedMemoryTopic as ManagedMemoryTopic,
     ReasoningEngineContextSpec,
-    ReasoningEngineContextSpecMemoryBankConfig as MemoryBankConfig,
 )
+from app.app_utils.memory_config import memory_bank_config
 ```
 
 ### Testing
@@ -486,7 +480,7 @@ If the agent starts but conversations don't persist or memories aren't recalled,
 
 ```python
 import vertexai
-client = vertexai.Client(project="your-project", location="us-central1")
+client = vertexai.Client(project="your-project", location="us-west1")
 agents = list(client.agent_engines.list())
 for a in agents:
     print(a.api_resource.display_name, a.api_resource.name)
