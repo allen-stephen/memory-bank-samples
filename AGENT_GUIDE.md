@@ -1,10 +1,10 @@
 # Agent Guide: ADK Agents on Agent Engine vs Cloud Run
 
-Practical learnings from building and deploying ADK agents with [Memory Bank](https://docs.cloud.google.com/agent-builder/agent-engine/memory-bank/set-up) to two deployment targets — Vertex AI Agent Engine and Cloud Run (FastAPI) — using the [Agents CLI](https://pypi.org/project/google-agents-cli/). These supplement the official documentation with implementation details discovered while building these samples.
+Practical learnings from building and deploying ADK agents with [Memory Bank](https://docs.cloud.google.com/agent-builder/agent-engine/memory-bank/set-up) to two deployment targets — Vertex AI Agent Engine and Cloud Run (FastAPI). These supplement the official documentation with implementation details discovered while building this sample.
 
-This guide covers both projects in this repo:
-- **`ae-memory-bank-sample`** — Agent Engine deployment
-- **`cr-memory-bank-sample`** — Cloud Run deployment with FastAPI
+This guide covers both deployment targets in this repo:
+- **Agent Engine** — via `app/agent_engine_app.py` and `make deploy-agent-engine`
+- **Cloud Run** — via `app/fast_api_app.py` and `make deploy-cloud-run`
 
 ---
 
@@ -67,7 +67,7 @@ This creates a FastAPI app that serves the ADK agent with a web UI, artifact sto
 
 ### 1.4. Agent definition is shared across deployment targets
 
-Both samples use the same `app/agent.py` structure:
+Both deployment targets share the same `app/agent.py`:
 
 ```python
 root_agent = Agent(
@@ -93,7 +93,7 @@ When deployed to Agent Engine, session management is handled by the platform. No
 
 ### 2.2. Cloud Run uses Agent Engine for remote sessions
 
-The Cloud Run sample uses Agent Engine as a remote session and memory service via the `agentengine://` URI scheme. It uses the `vertexai.Client` API (rather than the module-level `agent_engines` API) so it can pass `AgentEngineConfig` with `context_spec` when creating a new instance:
+The Cloud Run deployment uses Agent Engine as a remote session and memory service via the `agentengine://` URI scheme. It uses the `vertexai.Client` API (rather than the module-level `agent_engines` API) so it can pass `AgentEngineConfig` with `context_spec` when creating a new instance:
 
 ```python
 client = vertexai.Client(project=project_id, location=agent_engine_location)
@@ -139,7 +139,7 @@ if use_in_memory_session:
 
 ### 3.1. Agent-level integration
 
-Both samples wire Memory Bank into the agent with three additions to `app/agent.py`:
+Memory Bank is wired into the agent with three additions to `app/agent.py`:
 
 1. **`PreloadMemoryTool()`** — added to the agent's `tools` list. Retrieves memories at the start of each turn and injects them into the system instruction. The model sees past user preferences and facts as context without needing an explicit tool call.
 
@@ -166,7 +166,7 @@ root_agent = Agent(
 
 ### 3.2. Memory Bank configuration
 
-Both samples configure the same three managed topics using the class-based API from `vertexai._genai.types`:
+Both entry points configure the same three managed topics using the class-based API from `vertexai._genai.types`:
 
 ```python
 from vertexai._genai.types import (
@@ -233,11 +233,11 @@ runner = Runner(
 )
 ```
 
-Both samples also include a `test_agent_has_memory_wired()` test that verifies the callback and `PreloadMemoryTool` are correctly configured on the agent.
+The test suite also includes a `test_agent_has_memory_wired()` test that verifies the callback and `PreloadMemoryTool` are correctly configured on the agent.
 
 ### 3.6. Local development with Memory Bank
 
-When running locally with `make playground` or `agents-cli dev`, ADK uses `InMemoryMemoryService` by default. To test against a real Memory Bank instance:
+When running locally with `make playground`, ADK uses `InMemoryMemoryService` by default. To test against a real Memory Bank instance:
 
 ```bash
 uv run adk web . --port 8501 --memory_service_uri=agentengine://<AGENT_ENGINE_RESOURCE_NAME>
@@ -249,7 +249,7 @@ uv run adk web . --port 8501 --memory_service_uri=agentengine://<AGENT_ENGINE_RE
 
 ### 4.1. GCS artifacts in production, in-memory for local dev
 
-Both samples support GCS-backed artifact storage via the `LOGS_BUCKET_NAME` environment variable. When unset, they fall back to in-memory storage:
+Both deployment targets support GCS-backed artifact storage via the `LOGS_BUCKET_NAME` environment variable. When unset, they fall back to in-memory storage:
 
 **Agent Engine:**
 ```python
@@ -271,11 +271,11 @@ artifact_service_uri = f"gs://{logs_bucket_name}" if logs_bucket_name else None
 
 ### 5.1. Built-in telemetry setup
 
-Both samples call `setup_telemetry()` from `app.app_utils.telemetry` at startup. This configures OpenTelemetry to export traces to Cloud Trace and metrics to Cloud Monitoring.
+Both entry points call `setup_telemetry()` from `app.app_utils.telemetry` at startup. This configures OpenTelemetry to export traces to Cloud Trace and metrics to Cloud Monitoring.
 
 ### 5.2. Cloud Logging integration
 
-Both samples use `google-cloud-logging` for structured logging:
+Both entry points use `google-cloud-logging` for structured logging:
 
 ```python
 from google.cloud import logging as google_cloud_logging
@@ -295,7 +295,7 @@ Standard Python `logging.getLogger().info()` output may not appear in Cloud Run 
 
 ### 6.1. Test structure
 
-Both samples follow the same test layout:
+Tests follow this layout:
 
 ```
 tests/
@@ -335,19 +335,19 @@ make eval
 
 ```bash
 gcloud config set project <your-project-id>
-make deploy
+make deploy-agent-engine
 ```
 
-The `make deploy` target runs `app/app_utils/deploy.py`, which creates or updates the Agent Engine instance with `memory_bank_config` via `context_spec` in `AgentEngineConfig`.
+The `make deploy-agent-engine` target runs `app/app_utils/deploy.py`, which creates or updates the Agent Engine instance with `memory_bank_config` via `context_spec` in `AgentEngineConfig`.
 
 ### 7.2. Cloud Run deployment
 
 ```bash
 gcloud config set project <your-project-id>
-make deploy
+make deploy-cloud-run
 ```
 
-The `make deploy` target builds the Docker image and deploys to Cloud Run. On first startup, the Cloud Run service creates or finds an Agent Engine instance (with Memory Bank enabled) and configures both `session_service_uri` and `memory_service_uri`. The Dockerfile runs:
+The `make deploy-cloud-run` target builds the Docker image and deploys to Cloud Run. On first startup, the Cloud Run service creates or finds an Agent Engine instance (with Memory Bank enabled) and configures both `session_service_uri` and `memory_service_uri`. The Dockerfile runs:
 
 ```dockerfile
 CMD ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
@@ -355,7 +355,7 @@ CMD ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--por
 
 ### 7.3. Local development
 
-Both samples support local development with hot-reload:
+The project supports local development with hot-reload:
 
 ```bash
 make playground
@@ -367,19 +367,9 @@ This launches the ADK Web UI for interactive testing. You can also use `uv run a
 
 ## 8. Project Scaffolding
 
-### 8.1. These samples were generated with `agents-cli`
+### 8.1. Project structure
 
-Both projects were scaffolded using:
-
-```bash
-# Agent Engine target
-agents-cli create ae-memory-bank-sample --agent adk --deployment-target agent_engine
-
-# Cloud Run target
-agents-cli create cr-memory-bank-sample --agent adk --deployment-target cloud_run
-```
-
-The `[tool.agents-cli]` section in each `pyproject.toml` records the generation parameters, enabling CLI commands to understand project context. Each sample's README documents every change from the base template in a "Changes from Base Template" section.
+The project follows a standard ADK project layout with an `app/` directory containing the agent code and both entry points (`agent_engine_app.py` and `fast_api_app.py`), a `tests/` directory, and a `Makefile` for common operations.
 
 ---
 
@@ -483,11 +473,11 @@ from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 ### Test locally before deploying
 
 ```bash
-# Agent Engine sample
+# ADK Web UI playground
 make playground
 
-# Cloud Run sample (direct uvicorn)
-uv run uvicorn app.fast_api_app:app --host localhost --port 8000
+# Or run the Cloud Run entry point directly
+make local-server
 ```
 
 ### Check session and memory connectivity (Cloud Run)
@@ -508,7 +498,7 @@ Set `USE_IN_MEMORY_SESSION=true` when you don't need persistent sessions or memo
 
 ### Verify GCP authentication
 
-Both samples call `google.auth.default()` at import time. If this fails, ensure you've run:
+Both entry points call `google.auth.default()` at import time. If this fails, ensure you've run:
 
 ```bash
 gcloud auth application-default login

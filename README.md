@@ -1,20 +1,32 @@
-# ADK Memory Bank Samples
+# ADK Memory Bank Sample
 
-Two reference implementations of an ADK agent with [Memory Bank](https://docs.cloud.google.com/agent-builder/agent-engine/memory-bank/set-up) integration, deployed to Google Cloud using [ADK](https://adk.dev/) and the [Agents CLI](https://pypi.org/project/google-agents-cli/).
+An [ADK](https://adk.dev/) agent with [Memory Bank](https://docs.cloud.google.com/agent-builder/agent-engine/memory-bank/set-up) integration that remembers user preferences and facts across sessions. Deployable to Vertex AI Agent Engine or Cloud Run.
 
-Both agents do the same thing — answer weather and time queries while remembering user preferences and facts across sessions — but use different deployment targets and infrastructure.
-
-| | `ae-memory-bank-sample` | `cr-memory-bank-sample` |
-|---|---|---|
-| **Deployment target** | Vertex AI Agent Engine | Cloud Run (FastAPI) |
-| **Entry point** | `AgentEngineApp` | `FastAPI` via `get_fast_api_app()` |
-| **Session management** | Agent Engine (managed) | Agent Engine (remote, via `agentengine://` URI) |
-| **Memory Bank config** | `context_spec` in `AgentEngineConfig` (via `deploy.py`) | `context_spec` in `AgentEngineConfig` (at server startup) |
-| **Memory service** | `VertexAiMemoryBankService` (automatic) | `VertexAiMemoryBankService` (via `memory_service_uri`) |
-| **Memory retrieval** | `PreloadMemoryTool` | `PreloadMemoryTool` |
-| **Memory generation** | `after_agent_callback` | `after_agent_callback` |
-| **Container** | Managed by Agent Engine | Dockerfile + `uvicorn` |
-| **Deploy command** | `make deploy` | `make deploy` |
+<table>
+  <thead>
+    <tr>
+      <th colspan="2">Key Features</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Cross-session memory</strong></td>
+      <td>Remembers user preferences, personal info, and explicit instructions across conversations using Memory Bank's managed topics.</td>
+    </tr>
+    <tr>
+      <td><strong>Automatic memory extraction</strong></td>
+      <td>An <code>after_agent_callback</code> sends session events to Memory Bank after each turn — no manual tagging needed.</td>
+    </tr>
+    <tr>
+      <td><strong>Preloaded recall</strong></td>
+      <td><code>PreloadMemoryTool</code> injects relevant memories into the system instruction at the start of each turn, so the model sees them automatically.</td>
+    </tr>
+    <tr>
+      <td><strong>Two deployment targets</strong></td>
+      <td>Same agent code, deployable to Agent Engine (fully managed) or Cloud Run (container-based with FastAPI).</td>
+    </tr>
+  </tbody>
+</table>
 
 ## Example Interactions
 
@@ -49,17 +61,100 @@ These work because:
 - `generate_memories_callback` extracts those facts after the first session
 - Memory Bank consolidates them so they're available in every future session
 
+## Getting Started
+
+### Prerequisites
+- **Python 3.10+**
+- **uv** — Python package manager ([Install](https://docs.astral.sh/uv/getting-started/installation/))
+- **Google Cloud SDK** — `gcloud` CLI ([Install](https://cloud.google.com/sdk/docs/install))
+- Google Cloud project with billing enabled
+
+### Step 1: Install Dependencies
+```bash
+make install
+```
+
+### Step 2: Authenticate with Google Cloud
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project <your-project-id>
+```
+
+### Step 3: Run Locally
+```bash
+make playground
+```
+This launches the ADK Web UI on port 8501. Select the `app` folder to interact with your agent.
+
+When running locally, ADK uses `InMemoryMemoryService` — memories won't persist across restarts. To test against a real Memory Bank instance:
+```bash
+uv run adk web . --port 8501 --memory_service_uri=agentengine://<AGENT_ENGINE_RESOURCE_NAME>
+```
+
+## Cloud Deployment Options
+
+After completing the initial setup, you have two deployment options:
+
+### Option A: Deploy to Vertex AI Agent Engine
+
+Agent Engine provides fully managed infrastructure — session management, memory, and scaling are handled automatically.
+
+```bash
+make deploy-agent-engine
+```
+
+This runs `app/app_utils/deploy.py`, which:
+1. Reads `memory_bank_config` from `agent_engine_app.py`
+2. Wraps it in a `ReasoningEngineContextSpec`
+3. Passes it via `context_spec` in the `AgentEngineConfig`
+4. Creates or updates the Agent Engine instance with Memory Bank configured
+
+Entry point: `app/agent_engine_app.py` (`AgentEngineApp`, a subclass of `AdkApp`)
+
+### Option B: Deploy to Cloud Run
+
+Cloud Run gives you full control over the serving infrastructure — custom endpoints, middleware, container environment.
+
+```bash
+make deploy-cloud-run
+```
+
+On first startup, the Cloud Run service will:
+1. Find or create an Agent Engine instance for session and memory storage
+2. If creating, pass `memory_bank_config` via `context_spec` to enable Memory Bank
+3. Set `session_service_uri` and `memory_service_uri` to the same `agentengine://` URI
+4. Start the FastAPI server with both services wired up
+
+Entry point: `app/fast_api_app.py` (FastAPI via `get_fast_api_app()`)
+
+## Project Structure
+
+```
+memory-bank-sample/
+├── app/
+│   ├── agent.py                # Shared agent definition (tools, memory callback, PreloadMemoryTool)
+│   ├── agent_engine_app.py     # Agent Engine entry point + Memory Bank config
+│   ├── fast_api_app.py         # Cloud Run entry point + Memory Bank config
+│   └── app_utils/
+│       ├── deploy.py           # Agent Engine deployment script
+│       ├── telemetry.py        # OpenTelemetry setup
+│       └── typing.py           # Pydantic models
+├── tests/                      # Unit, integration, and eval tests
+├── Dockerfile                  # Cloud Run container
+├── Makefile                    # Install, deploy, test, eval commands
+└── pyproject.toml              # Project dependencies
+```
+
 ## How Memory Bank Works
 
-Both samples integrate Memory Bank using the same agent-level pattern, with differences only in how the Memory Bank service is configured for each deployment target.
-
-### Agent-level (shared)
+### Agent-level (shared across both deployment targets)
 
 1. **`PreloadMemoryTool`** retrieves relevant memories at the start of each turn and injects them into the system instruction. The model sees past user preferences and facts as context without needing an explicit tool call.
 2. **`generate_memories_callback`** fires after each agent turn via `after_agent_callback`, calling `callback_context.add_session_to_memory()` to send the session's events to Memory Bank for memory extraction.
 3. **Memory Bank** automatically consolidates new memories with existing ones, avoiding duplicates and resolving contradictions.
 
-### Platform-level (differs by target)
+### Platform-level (differs by deployment target)
 
 **Agent Engine**: `AdkApp` automatically uses `VertexAiMemoryBankService` when deployed with a `memory_bank_config` in `context_spec`. The deploy script (`app/app_utils/deploy.py`) passes the config via `AgentEngineConfig`.
 
@@ -67,23 +162,28 @@ Both samples integrate Memory Bank using the same agent-level pattern, with diff
 
 ### Memory topics
 
-Both samples configure three managed topics:
+Both entry points configure three managed topics:
 - `USER_PERSONAL_INFO` — names, relationships, hobbies, important dates
 - `USER_PREFERENCES` — likes, dislikes, preferred styles
 - `EXPLICIT_INSTRUCTIONS` — things the user explicitly asks the agent to remember
 
-## Prerequisites
+## Commands
 
-- Google Cloud project with billing enabled
-- `gcloud` CLI authenticated (`gcloud auth login`)
-- `uv` — Python package manager ([Install](https://docs.astral.sh/uv/getting-started/installation/))
-
-## Quick Start
-
-See each project's README for setup and deployment instructions:
-- [`ae-memory-bank-sample/README.md`](ae-memory-bank-sample/README.md) — Agent Engine deployment
-- [`cr-memory-bank-sample/README.md`](cr-memory-bank-sample/README.md) — Cloud Run deployment
+| Command | Description |
+|---|---|
+| `make install` | Install dependencies using uv |
+| `make playground` | Launch local dev playground (ADK Web UI) |
+| `make deploy-agent-engine` | Deploy to Vertex AI Agent Engine |
+| `make deploy-cloud-run` | Deploy to Cloud Run |
+| `make local-server` | Run FastAPI server locally with hot-reload |
+| `make test` | Run unit and integration tests |
+| `make eval` | Run agent evaluation |
+| `make lint` | Run code quality checks |
 
 ## Agent Guide
 
-See [`AGENT_GUIDE.md`](AGENT_GUIDE.md) for a reference on ADK concepts, Memory Bank integration patterns, deployment mechanics, session management, testing, and debugging strategies covered by these samples.
+See [`AGENT_GUIDE.md`](AGENT_GUIDE.md) for a deeper reference on ADK concepts, Memory Bank integration patterns, deployment mechanics, session management, testing, and debugging strategies.
+
+## Disclaimer
+
+This software is provided as-is, without warranty or representation for any use or purpose. This is sample code intended for demonstration and learning purposes only. It is not intended for production use. Your use of this software is at your own risk.
